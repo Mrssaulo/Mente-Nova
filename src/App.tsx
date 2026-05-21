@@ -181,7 +181,10 @@ const emptyTask = {
   recurrenceStopped: false,
 };
 
+const quickKindOptions = ["conteúdo", "manutenção", "financeiro", "renovação", "tarefa"] as const;
+
 type CalendarFilters = typeof emptyFilters;
+type QuickKind = (typeof quickKindOptions)[number];
 type ProjectDraft = typeof emptyProject;
 type ReminderDraft = typeof emptyReminder;
 type ContentDraft = typeof emptyContent;
@@ -195,6 +198,7 @@ export function App() {
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("mês");
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [filters, setFilters] = useState<CalendarFilters>(emptyFilters);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [toast, setToast] = useState("");
 
   useEffect(() => {
@@ -590,21 +594,27 @@ export function App() {
           <p className="eyebrow">Organizador de projetos</p>
           <h1>Calendário operacional</h1>
         </div>
-        <nav className="view-tabs" aria-label="Navegação principal">
-          {(["calendário", "dashboard", "projetos", "conteúdo", "manutenção", "renovações", "financeiro", "tarefas"] as AppView[]).map((view) => (
-            <button className={activeView === view ? "active" : ""} key={view} type="button" onClick={() => setActiveView(view)}>
-              {view === "calendário" && <CalendarDays size={17} />}
-              {view === "dashboard" && <Gauge size={17} />}
-              {view === "projetos" && <FolderKanban size={17} />}
-              {view === "conteúdo" && <Megaphone size={17} />}
-              {view === "manutenção" && <ServerCog size={17} />}
-              {view === "renovações" && <RotateCcw size={17} />}
-              {view === "financeiro" && <WalletCards size={17} />}
-              {view === "tarefas" && <ListChecks size={17} />}
-              <span>{capitalize(view)}</span>
-            </button>
-          ))}
-        </nav>
+        <div className="topbar-actions">
+          <button className="primary-button quick-create-button" type="button" onClick={() => setQuickCreateOpen(true)}>
+            <Plus size={16} />
+            <span>Criar rápido</span>
+          </button>
+          <nav className="view-tabs" aria-label="Navegação principal">
+            {(["calendário", "dashboard", "projetos", "conteúdo", "manutenção", "renovações", "financeiro", "tarefas"] as AppView[]).map((view) => (
+              <button className={activeView === view ? "active" : ""} key={view} type="button" onClick={() => setActiveView(view)}>
+                {view === "calendário" && <CalendarDays size={17} />}
+                {view === "dashboard" && <Gauge size={17} />}
+                {view === "projetos" && <FolderKanban size={17} />}
+                {view === "conteúdo" && <Megaphone size={17} />}
+                {view === "manutenção" && <ServerCog size={17} />}
+                {view === "renovações" && <RotateCcw size={17} />}
+                {view === "financeiro" && <WalletCards size={17} />}
+                {view === "tarefas" && <ListChecks size={17} />}
+                <span>{capitalize(view)}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
       </header>
 
       <main className="main-layout">
@@ -720,6 +730,261 @@ export function App() {
           {toast}
         </div>
       )}
+
+      {quickCreateOpen && (
+        <QuickCreatePanel
+          projects={data.projects}
+          onClose={() => setQuickCreateOpen(false)}
+          onSaveContent={upsertContent}
+          onSaveMaintenance={upsertMaintenance}
+          onSaveFinance={upsertFinanceItem}
+          onSaveReminder={upsertReminder}
+          onSaveTask={upsertTask}
+        />
+      )}
+    </div>
+  );
+}
+
+function QuickCreatePanel({
+  projects,
+  onClose,
+  onSaveContent,
+  onSaveMaintenance,
+  onSaveFinance,
+  onSaveReminder,
+  onSaveTask,
+}: {
+  projects: Project[];
+  onClose: () => void;
+  onSaveContent: (item: ContentItem) => void;
+  onSaveMaintenance: (item: MaintenanceItem) => void;
+  onSaveFinance: (item: FinanceItem) => void;
+  onSaveReminder: (reminder: Reminder) => void;
+  onSaveTask: (task: GeneralTask) => void;
+}) {
+  const [kind, setKind] = useState<QuickKind>("tarefa");
+  const [title, setTitle] = useState("");
+  const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
+  const [date, setDate] = useState(todayKey());
+  const [priority, setPriority] = useState<Priority>("média");
+  const [recurrence, setRecurrence] = useState<Recurrence>("único");
+  const [originUrl, setOriginUrl] = useState("");
+  const [platform, setPlatform] = useState<ContentPlatform>("Instagram");
+  const [contentType, setContentType] = useState<ContentType>("post comum");
+  const [amountBrl, setAmountBrl] = useState(0);
+  const [amountUsd, setAmountUsd] = useState(0);
+
+  function resetType(nextKind: QuickKind) {
+    setKind(nextKind);
+    setTitle("");
+    setDate(todayKey());
+    setPriority("média");
+    setRecurrence(nextKind === "financeiro" ? "mensal" : "único");
+    setOriginUrl("");
+    setAmountBrl(0);
+    setAmountUsd(0);
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const now = new Date().toISOString();
+    const safeProjectId = projectId || projects[0]?.id || "";
+    const safeTitle = title.trim() || quickTitleFallback(kind);
+    const recurrenceStopped = recurrence === "nunca mais";
+
+    if (kind === "conteúdo") {
+      onSaveContent({
+        id: createId("content"),
+        title: safeTitle,
+        projectId: safeProjectId,
+        platform,
+        type: contentType,
+        status: "ideia",
+        postDate: date,
+        priority,
+        caption: "",
+        assetUrl: originUrl,
+        notes: "",
+        recurrence,
+        recurrenceStopped,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (kind === "manutenção") {
+      onSaveMaintenance({
+        id: createId("maintenance"),
+        title: safeTitle,
+        projectId: safeProjectId,
+        kind: "Atualizar projeto",
+        date,
+        recurrence,
+        priority,
+        status: "pendente",
+        originUrl,
+        notes: "",
+        recurrenceStopped,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (kind === "financeiro") {
+      onSaveFinance({
+        id: createId("finance"),
+        name: safeTitle,
+        projectId: safeProjectId,
+        amountBrl: Number(amountBrl) || 0,
+        amountUsd: Number(amountUsd) || 0,
+        dueDate: date,
+        recurrence,
+        status: "pendente",
+        originUrl,
+        notes: "",
+        recurrenceStopped,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (kind === "renovação") {
+      onSaveReminder({
+        id: createId("reminder"),
+        title: safeTitle,
+        projectId: safeProjectId,
+        dueDate: date,
+        type: "renovação",
+        recurrence,
+        priority,
+        status: "pendente",
+        notes: "",
+        originUrl,
+        recurrenceStopped,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (kind === "tarefa") {
+      onSaveTask({
+        id: createId("task"),
+        title: safeTitle,
+        projectId: safeProjectId,
+        category: "operação",
+        date,
+        priority,
+        status: "pendente",
+        recurrence,
+        originUrl,
+        notes: "",
+        recurrenceStopped,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    onClose();
+  }
+
+  return (
+    <div className="quick-create-overlay" role="dialog" aria-modal="true" aria-labelledby="quick-create-title">
+      <section className="quick-create-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Novo item</p>
+            <h2 id="quick-create-title">Criar rápido</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Fechar criação rápida">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="quick-type-grid" role="group" aria-label="Tipo de item">
+          {quickKindOptions.map((option) => (
+            <button className={kind === option ? "active" : ""} key={option} type="button" onClick={() => resetType(option)}>
+              {eventIcon(option === "renovação" ? "renovação" : option, 16)}
+              <span>{option === "conteúdo" ? "Conteúdo/Post" : capitalize(option)}</span>
+            </button>
+          ))}
+        </div>
+
+        <form className="data-form" onSubmit={submit}>
+          <label>
+            Título
+            <input value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
+          </label>
+          <ProjectSelect value={projectId} projects={projects} onChange={setProjectId} />
+          <div className="form-grid">
+            <label>
+              Data
+              <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+            </label>
+            <label>
+              Prioridade
+              <PrioritySelect value={priority} onChange={setPriority} />
+            </label>
+          </div>
+          <label>
+            Recorrência
+            <RecurrenceSelect value={recurrence} onChange={setRecurrence} />
+          </label>
+
+          {kind === "conteúdo" && (
+            <div className="form-grid">
+              <label>
+                Plataforma
+                <select value={platform} onChange={(event) => setPlatform(event.target.value as ContentPlatform)}>
+                  {contentPlatformOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Tipo de conteúdo
+                <select value={contentType} onChange={(event) => setContentType(event.target.value as ContentType)}>
+                  {contentTypeOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
+          {kind === "financeiro" && (
+            <div className="form-grid">
+              <label>
+                Valor em R$
+                <input type="number" min="0" step="0.01" value={amountBrl} onChange={(event) => setAmountBrl(Number(event.target.value))} />
+              </label>
+              <label>
+                Valor em US$
+                <input type="number" min="0" step="0.01" value={amountUsd} onChange={(event) => setAmountUsd(Number(event.target.value))} />
+              </label>
+            </div>
+          )}
+
+          <label>
+            Link de origem opcional
+            <input inputMode="url" value={originUrl} onChange={(event) => setOriginUrl(event.target.value)} />
+          </label>
+          <div className="button-row">
+            <button className="primary-button" type="submit">
+              <Save size={16} />
+              <span>Criar item</span>
+            </button>
+            <button className="ghost-button" type="button" onClick={onClose}>
+              <X size={16} />
+              <span>Cancelar</span>
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }
@@ -759,6 +1024,7 @@ function CalendarBoard({
   onStopEvent,
   onMissingOrigin,
 }: CalendarBoardProps) {
+  const focusEvents = useMemo(() => buildTodayFocusEvents(events), [events]);
   const visibleEvents = useMemo(() => {
     if (mode === "dia") return events.filter((event) => event.date === selectedDate || isAlwaysVisible(event));
     if (mode === "semana") {
@@ -805,6 +1071,12 @@ function CalendarBoard({
           ))}
         </div>
       </section>
+
+      <TodayFocusPanel
+        events={focusEvents}
+        onComplete={onCompleteEvent}
+        onMissingOrigin={onMissingOrigin}
+      />
 
       <FilterBar filters={filters} projects={projects} events={allEvents} onChange={onFilterChange} />
 
@@ -860,6 +1132,66 @@ function CalendarBoard({
   );
 }
 
+function TodayFocusPanel({
+  events,
+  onComplete,
+  onMissingOrigin,
+}: {
+  events: CalendarEvent[];
+  onComplete: (event: CalendarEvent) => void;
+  onMissingOrigin: () => void;
+}) {
+  return (
+    <section className="today-focus-panel" aria-label="Prioridades de hoje">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Agora</p>
+          <h2>{events.length === 0 ? "Nada urgente no momento" : "O que fazer primeiro"}</h2>
+        </div>
+        <Clock3 size={20} />
+      </div>
+
+      <div className="today-focus-list">
+        {events.length === 0 && <EmptyState text="Sem atrasados, críticos ou itens para hoje." />}
+        {events.map((event) => {
+          const done = isEventDone(event);
+          const primaryLabel = event.kind === "financeiro" ? "Pagar" : event.kind === "conteúdo" ? "Publicar" : "Concluir";
+
+          return (
+            <article className={`today-focus-item ${statusClass(event.kind)} ${statusClass(event.status)} ${event.priority === "crítica" ? "is-critical" : ""}`} key={`${event.kind}-${event.id}`}>
+              <div className="event-main">
+                <div className="event-title-line">
+                  {eventIcon(event.kind, 17)}
+                  <strong>{event.title}</strong>
+                </div>
+                <p>
+                  {event.projectName} · {capitalize(event.kind)} · {formatShortDate(event.date)}
+                </p>
+                <div className="meta-line">
+                  <StatusBadge value={event.status} compact />
+                  {event.priority && <StatusBadge value={event.priority} compact />}
+                  {event.type && <span className="meta-chip">{event.type}</span>}
+                </div>
+              </div>
+              <div className="focus-actions">
+                {!done ? (
+                  <button className="primary-button" type="button" onClick={() => onComplete(event)}>
+                    <Check size={16} />
+                    <span>{primaryLabel}</span>
+                  </button>
+                ) : (
+                  <OriginButton url={event.originUrl} onMissing={onMissingOrigin} />
+                )}
+                {!done && <OriginButton url={event.originUrl} onMissing={onMissingOrigin} />}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function FilterBar({
   filters,
   projects,
@@ -871,93 +1203,100 @@ function FilterBar({
   events: CalendarEvent[];
   onChange: (filters: CalendarFilters) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const availableStatuses = [...new Set([...calendarStatusOptions, ...events.map((event) => event.status)])];
+  const activeFilters = describeActiveFilters(filters, projects);
 
   return (
     <section className="filter-panel" aria-label="Filtros do calendário">
       <div className="panel-heading filter-heading">
         <div>
-          <p className="eyebrow">Filtros</p>
-          <h2>Projeto, categoria, status, prioridade, data, plataforma e recorrência</h2>
+          <p className="eyebrow">Filtros avançados</p>
+          <h2>{activeFilters.length === 0 ? "Nenhum filtro ativo" : activeFilters.join(" · ")}</h2>
         </div>
-        <SlidersHorizontal size={20} />
-      </div>
-      <div className="filter-grid">
-        <label>
-          Projeto
-          <select value={filters.projectId} onChange={(event) => onChange({ ...filters, projectId: event.target.value })}>
-            <option value="todos">Todos</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Categoria
-          <select value={filters.category} onChange={(event) => onChange({ ...filters, category: event.target.value })}>
-            <option value="todos">Todas</option>
-            {calendarCategoryOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Status
-          <select value={filters.status} onChange={(event) => onChange({ ...filters, status: event.target.value })}>
-            <option value="todos">Todos</option>
-            {availableStatuses.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Prioridade
-          <select value={filters.priority} onChange={(event) => onChange({ ...filters, priority: event.target.value })}>
-            <option value="todos">Todas</option>
-            {priorityOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Data
-          <input type="date" value={filters.date} onChange={(event) => onChange({ ...filters, date: event.target.value })} />
-        </label>
-        <label>
-          Plataforma
-          <select value={filters.platform} onChange={(event) => onChange({ ...filters, platform: event.target.value })}>
-            <option value="todos">Todas</option>
-            {contentPlatformOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Recorrência
-          <select value={filters.recurrence} onChange={(event) => onChange({ ...filters, recurrence: event.target.value })}>
-            <option value="todos">Todas</option>
-            {recurrenceOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button className="ghost-button clear-filters" type="button" onClick={() => onChange(emptyFilters)}>
-          <X size={16} />
-          <span>Limpar</span>
+        <button className="secondary-button" type="button" onClick={() => setOpen((current) => !current)}>
+          <SlidersHorizontal size={16} />
+          <span>{open ? "Ocultar" : "Mostrar"}</span>
         </button>
       </div>
+      {open && (
+        <div className="filter-grid">
+          <label>
+            Projeto
+            <select value={filters.projectId} onChange={(event) => onChange({ ...filters, projectId: event.target.value })}>
+              <option value="todos">Todos</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Categoria
+            <select value={filters.category} onChange={(event) => onChange({ ...filters, category: event.target.value })}>
+              <option value="todos">Todas</option>
+              {calendarCategoryOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Status
+            <select value={filters.status} onChange={(event) => onChange({ ...filters, status: event.target.value })}>
+              <option value="todos">Todos</option>
+              {availableStatuses.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Prioridade
+            <select value={filters.priority} onChange={(event) => onChange({ ...filters, priority: event.target.value })}>
+              <option value="todos">Todas</option>
+              {priorityOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Data
+            <input type="date" value={filters.date} onChange={(event) => onChange({ ...filters, date: event.target.value })} />
+          </label>
+          <label>
+            Plataforma
+            <select value={filters.platform} onChange={(event) => onChange({ ...filters, platform: event.target.value })}>
+              <option value="todos">Todas</option>
+              {contentPlatformOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Recorrência
+            <select value={filters.recurrence} onChange={(event) => onChange({ ...filters, recurrence: event.target.value })}>
+              <option value="todos">Todas</option>
+              {recurrenceOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="ghost-button clear-filters" type="button" onClick={() => onChange(emptyFilters)}>
+            <X size={16} />
+            <span>Limpar</span>
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -979,9 +1318,8 @@ function DashboardView({
   onStopEvent: (event: CalendarEvent) => void;
   onMissingOrigin: () => void;
 }) {
-  const today = todayKey();
   const pendingEvents = events.filter((event) => !isEventDone(event));
-  const todayEvents = pendingEvents.filter((event) => event.date === today || isAlwaysVisible(event)).slice(0, 8);
+  const todayEvents = buildTodayFocusEvents(events).slice(0, 8);
   const lateEvents = pendingEvents.filter((event) => event.status === "atrasado").slice(0, 8);
   const renewals = pendingEvents.filter((event) => event.kind === "renovação").sort(sortByDate).slice(0, 6);
   const posts = pendingEvents.filter((event) => event.kind === "conteúdo").sort(sortByDate).slice(0, 6);
@@ -1910,6 +2248,7 @@ function FinanceManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const projectName = (projectId: string) => projects.find((project) => project.id === projectId)?.name ?? "Sem projeto";
   const sortedItems = [...financeItems].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const financeOverview = useMemo(() => buildFinanceOverview(stats), [stats]);
 
   function edit(item: FinanceItem) {
     setEditingId(item.id);
@@ -1956,10 +2295,11 @@ function FinanceManager({
   return (
     <div className="finance-screen">
       <section className="finance-dashboard">
-        <SummaryCard label="Mês R$" value={formatCurrency(stats.monthBrl, "BRL")} tone="green" />
-        <SummaryCard label="Mês US$" value={formatCurrency(stats.monthUsd, "USD")} tone="blue" />
-        <SummaryCard label="Ano R$" value={formatCurrency(stats.annualBrl, "BRL")} tone="yellow" />
-        <SummaryCard label="Ano US$" value={formatCurrency(stats.annualUsd, "USD")} tone="red" />
+        <SummaryCard label="Realizado/Pago" value={formatMoneyPair(financeOverview.paidBrl, financeOverview.paidUsd)} tone="green" />
+        <SummaryCard label="Pendente" value={formatMoneyPair(financeOverview.pendingBrl, financeOverview.pendingUsd)} tone="blue" />
+        <SummaryCard label="Atrasado" value={formatMoneyPair(financeOverview.overdueBrl, financeOverview.overdueUsd)} tone="red" />
+        <SummaryCard label="Previsão mensal" value={formatMoneyPair(stats.monthBrl, stats.monthUsd)} tone="yellow" />
+        <SummaryCard label="Previsão anual" value={formatMoneyPair(stats.annualBrl, stats.annualUsd)} tone="blue" />
       </section>
 
       <section className="chart-panel">
@@ -2704,6 +3044,34 @@ function applyCalendarFilters(events: CalendarEvent[], filters: CalendarFilters)
   });
 }
 
+function buildTodayFocusEvents(events: CalendarEvent[]) {
+  return events
+    .filter((event) => !isEventDone(event))
+    .filter((event) => event.status === "atrasado" || event.priority === "crítica" || event.priority === "alta" || event.date >= todayKey())
+    .sort((a, b) => focusScore(a) - focusScore(b) || a.date.localeCompare(b.date))
+    .slice(0, 6);
+}
+
+function focusScore(event: CalendarEvent) {
+  if (event.status === "atrasado") return 0;
+  if (event.priority === "crítica") return 1;
+  if (event.priority === "alta") return 2;
+  if (event.date === todayKey() || isAlwaysVisible(event)) return 3;
+  return 4;
+}
+
+function describeActiveFilters(filters: CalendarFilters, projects: Project[]) {
+  const labels: string[] = [];
+  if (filters.projectId !== "todos") labels.push(projects.find((project) => project.id === filters.projectId)?.name ?? "Projeto filtrado");
+  if (filters.category !== "todos") labels.push(`Categoria: ${filters.category}`);
+  if (filters.status !== "todos") labels.push(`Status: ${filters.status}`);
+  if (filters.priority !== "todos") labels.push(`Prioridade: ${filters.priority}`);
+  if (filters.date) labels.push(`Data: ${formatShortDate(filters.date)}`);
+  if (filters.platform !== "todos") labels.push(`Plataforma: ${filters.platform}`);
+  if (filters.recurrence !== "todos") labels.push(`Recorrência: ${filters.recurrence}`);
+  return labels;
+}
+
 function getReminderCalendarStatus(reminder: Reminder): CalendarStatus {
   if (reminder.recurrence === "permanente" && !reminder.recurrenceStopped) return "permanente";
   if (reminder.status === "concluído" || reminder.status === "ignorado") return "concluído";
@@ -2903,6 +3271,21 @@ function buildRecurringFinanceObligations(items: FinanceItem[]) {
   return [...obligations.values()];
 }
 
+function buildFinanceOverview(stats: ReturnType<typeof buildFinanceStats>) {
+  const paidThisMonth = stats.paidHistory.filter((item) => monthKey(item.dueDate) === monthKey(todayKey()));
+  const pendingItems = stats.upcomingPayments.filter((item) => item.status === "pendente" && diffInDays(item.dueDate) >= 0);
+  const overdueItems = stats.upcomingPayments.filter((item) => item.status === "atrasado" || diffInDays(item.dueDate) < 0);
+
+  return {
+    paidBrl: sum(paidThisMonth.map((item) => item.amountBrl)),
+    paidUsd: sum(paidThisMonth.map((item) => item.amountUsd)),
+    pendingBrl: sum(pendingItems.map((item) => item.amountBrl)),
+    pendingUsd: sum(pendingItems.map((item) => item.amountUsd)),
+    overdueBrl: sum(overdueItems.map((item) => item.amountBrl)),
+    overdueUsd: sum(overdueItems.map((item) => item.amountUsd)),
+  };
+}
+
 function buildTaskBuckets(tasks: GeneralTask[]) {
   const buckets = new Map<TaskCategory, number>();
   for (const task of tasks) {
@@ -2945,8 +3328,20 @@ function formatCurrency(value: number, currency: "BRL" | "USD") {
   }).format(value || 0);
 }
 
+function formatMoneyPair(amountBrl: number, amountUsd: number) {
+  return `${formatCurrency(amountBrl, "BRL")} · ${formatCurrency(amountUsd, "USD")}`;
+}
+
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function quickTitleFallback(kind: QuickKind) {
+  if (kind === "conteúdo") return "Conteúdo sem título";
+  if (kind === "manutenção") return "Manutenção sem título";
+  if (kind === "financeiro") return "Gasto sem nome";
+  if (kind === "renovação") return "Renovação sem título";
+  return "Tarefa sem título";
 }
 
 function statusClass(value: string) {
