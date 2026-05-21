@@ -590,9 +590,21 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">Organizador de projetos</p>
-          <h1>Calendário operacional</h1>
+        <div className="brand-lockup">
+          <div className="brand-logo-frame">
+            <img
+              src="/montalvex-logo.jpeg"
+              alt="Montalvex"
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+              }}
+            />
+            <span className="brand-logo-fallback">M</span>
+          </div>
+          <div>
+            <p className="eyebrow">by Montalvex</p>
+            <h1>Mente Nova</h1>
+          </div>
         </div>
         <div className="topbar-actions">
           <button className="primary-button quick-create-button" type="button" onClick={() => setQuickCreateOpen(true)}>
