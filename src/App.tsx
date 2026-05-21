@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock3,
+  Download,
   FolderKanban,
   Gauge,
   ListChecks,
@@ -16,8 +17,11 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Send,
   ServerCog,
+  ShieldCheck,
   SlidersHorizontal,
+  Smartphone,
   Trash2,
   WalletCards,
   X,
@@ -103,6 +107,20 @@ const emptyFilters = {
   platform: "todos",
   recurrence: "todos",
 };
+
+type NotificationPermissionView = "unsupported" | "not-configured" | "granted" | "denied";
+
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+interface NotificationAlert {
+  event: CalendarEvent;
+  label: string;
+  tone: "danger" | "warning" | "info";
+  weight: number;
+}
 
 const emptyProject = {
   name: "",
@@ -199,6 +217,11 @@ export function App() {
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [filters, setFilters] = useState<CalendarFilters>(emptyFilters);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(() => isStandaloneDisplay());
+  const [serviceWorkerReady, setServiceWorkerReady] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionView>(() => getNotificationPermissionView());
   const [toast, setToast] = useState("");
 
   useEffect(() => {
@@ -211,10 +234,42 @@ export function App() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
+  useEffect(() => {
+    const handleInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+    };
+    const handleInstalled = () => {
+      setInstallPrompt(null);
+      setIsStandalone(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+    setNotificationPermission(getNotificationPermissionView());
+    setIsStandalone(isStandaloneDisplay());
+
+    if ("serviceWorker" in navigator && import.meta.env.PROD) {
+      navigator.serviceWorker
+        .register("/service-worker.js")
+        .then(() => navigator.serviceWorker.ready)
+        .then(() => setServiceWorkerReady(true))
+        .catch(() => setServiceWorkerReady(false));
+    } else if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistration().then((registration) => setServiceWorkerReady(Boolean(registration)));
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+    };
+  }, []);
+
   const projectNameById = useMemo(() => new Map(data.projects.map((project) => [project.id, project.name])), [data.projects]);
 
   const calendarEvents = useMemo(() => buildCalendarEvents(data, projectNameById), [data, projectNameById]);
   const filteredEvents = useMemo(() => applyCalendarFilters(calendarEvents, filters), [calendarEvents, filters]);
+  const notificationAlerts = useMemo(() => buildNotificationAlerts(calendarEvents), [calendarEvents]);
   const financeStats = useMemo(() => buildFinanceStats(data.financeItems, data.projects), [data.financeItems, data.projects]);
 
   const summary = useMemo(() => {
@@ -246,6 +301,61 @@ export function App() {
 
   function showMissingOrigin(message?: string) {
     setToast(message ?? "Nenhum link de origem cadastrado para este item.");
+  }
+
+  async function installApp() {
+    if (isStandalone) {
+      setToast("O Mente Nova ja esta em modo aplicativo neste dispositivo.");
+      return;
+    }
+    if (!installPrompt) {
+      setToast("Se o navegador permitir, use a opcao Instalar app ou Adicionar a tela inicial no menu.");
+      return;
+    }
+    await installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
+    setIsStandalone(isStandaloneDisplay());
+  }
+
+  async function requestNotifications() {
+    if (!("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      setToast("Este navegador nao oferece suporte a notificacoes locais.");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permissionToView(permission));
+    if (permission === "granted") {
+      setToast("Notificacoes ativadas para testes locais.");
+      await sendLocalNotification("Mente Nova", "Notificacoes locais ativadas. Seus alertas aparecem dentro do app e podem ser testados aqui.");
+      return;
+    }
+    if (permission === "denied") {
+      setToast("Notificacoes bloqueadas. Libere nas configuracoes do navegador para ativar.");
+      return;
+    }
+    setToast("Notificacoes ainda nao configuradas.");
+  }
+
+  async function sendTestNotification() {
+    if (!("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      setToast("Este navegador nao oferece suporte a notificacoes locais.");
+      return;
+    }
+    const currentPermission = getNotificationPermissionView();
+    setNotificationPermission(currentPermission);
+    if (currentPermission === "denied") {
+      setToast("Notificacoes bloqueadas. Libere nas configuracoes do navegador.");
+      return;
+    }
+    if (currentPermission !== "granted") {
+      setToast("Ative as notificacoes antes de enviar um teste.");
+      return;
+    }
+    await sendLocalNotification("Teste do Mente Nova", "Se voce viu este aviso, a base local de notificacoes esta funcionando.");
+    setToast("Notificacao de teste enviada.");
   }
 
   function upsertProject(project: Project) {
@@ -591,15 +701,16 @@ export function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-lockup">
-          <div className="brand-logo-frame">
-            <img
-              src="/montalvex-logo.jpeg"
-              alt="Montalvex"
-              onError={(event) => {
-                event.currentTarget.style.display = "none";
-              }}
-            />
-            <span className="brand-logo-fallback">M</span>
+          <div className={`brand-logo-frame${logoFailed ? " logo-missing" : ""}`}>
+            {!logoFailed && (
+              <img
+                src="/montalvex-logo.jpeg"
+                alt="Montalvex"
+                onError={() => setLogoFailed(true)}
+                onLoad={() => setLogoFailed(false)}
+              />
+            )}
+            <span className="brand-logo-fallback">Montalvex</span>
           </div>
           <div>
             <p className="eyebrow">by Montalvex</p>
@@ -612,7 +723,7 @@ export function App() {
             <span>Criar rápido</span>
           </button>
           <nav className="view-tabs" aria-label="Navegação principal">
-            {(["calendário", "dashboard", "projetos", "conteúdo", "manutenção", "renovações", "financeiro", "tarefas"] as AppView[]).map((view) => (
+            {(["calendário", "dashboard", "projetos", "conteúdo", "manutenção", "renovações", "financeiro", "tarefas", "configurações"] as AppView[]).map((view) => (
               <button className={activeView === view ? "active" : ""} key={view} type="button" onClick={() => setActiveView(view)}>
                 {view === "calendário" && <CalendarDays size={17} />}
                 {view === "dashboard" && <Gauge size={17} />}
@@ -622,6 +733,7 @@ export function App() {
                 {view === "renovações" && <RotateCcw size={17} />}
                 {view === "financeiro" && <WalletCards size={17} />}
                 {view === "tarefas" && <ListChecks size={17} />}
+                {view === "configurações" && <SlidersHorizontal size={17} />}
                 <span>{capitalize(view)}</span>
               </button>
             ))}
@@ -735,7 +847,43 @@ export function App() {
             onMissingOrigin={showMissingOrigin}
           />
         )}
+
+        {activeView === "configurações" && (
+          <SettingsView
+            isStandalone={isStandalone}
+            installAvailable={Boolean(installPrompt)}
+            serviceWorkerReady={serviceWorkerReady}
+            notificationPermission={notificationPermission}
+            notificationAlerts={notificationAlerts}
+            onInstall={installApp}
+            onRequestNotifications={requestNotifications}
+            onSendTestNotification={sendTestNotification}
+          />
+        )}
       </main>
+
+      <nav className="mobile-bottom-nav" aria-label="Atalhos do aplicativo">
+        <button className={activeView === "dashboard" ? "active" : ""} type="button" onClick={() => setActiveView("dashboard")}>
+          <Gauge size={19} />
+          <span>Agora</span>
+        </button>
+        <button className={activeView === "calendário" ? "active" : ""} type="button" onClick={() => setActiveView("calendário")}>
+          <CalendarDays size={19} />
+          <span>Calendário</span>
+        </button>
+        <button className="mobile-create-action" type="button" onClick={() => setQuickCreateOpen(true)}>
+          <Plus size={22} />
+          <span>Criar</span>
+        </button>
+        <button className={activeView === "financeiro" ? "active" : ""} type="button" onClick={() => setActiveView("financeiro")}>
+          <WalletCards size={19} />
+          <span>Financeiro</span>
+        </button>
+        <button className={activeView === "configurações" ? "active" : ""} type="button" onClick={() => setActiveView("configurações")}>
+          <SlidersHorizontal size={19} />
+          <span>Mais</span>
+        </button>
+      </nav>
 
       {toast && (
         <div className="toast" role="status">
@@ -754,6 +902,130 @@ export function App() {
           onSaveTask={upsertTask}
         />
       )}
+    </div>
+  );
+}
+
+function SettingsView({
+  isStandalone,
+  installAvailable,
+  serviceWorkerReady,
+  notificationPermission,
+  notificationAlerts,
+  onInstall,
+  onRequestNotifications,
+  onSendTestNotification,
+}: {
+  isStandalone: boolean;
+  installAvailable: boolean;
+  serviceWorkerReady: boolean;
+  notificationPermission: NotificationPermissionView;
+  notificationAlerts: NotificationAlert[];
+  onInstall: () => void;
+  onRequestNotifications: () => void;
+  onSendTestNotification: () => void;
+}) {
+  const notificationCopy = notificationStatusCopy(notificationPermission);
+
+  return (
+    <section className="settings-layout">
+      <PanelHeading eyebrow="Preferências" title="App e notificações" />
+
+      <div className="settings-grid">
+        <article className="settings-card">
+          <div className="settings-card-title">
+            <Smartphone size={21} />
+            <div>
+              <h3>Aplicativo instalável</h3>
+              <p>Use o Mente Nova como app na tela inicial do celular.</p>
+            </div>
+          </div>
+          <div className="settings-status-list">
+            <StatusLine label="Modo app" value={isStandalone ? "Instalado/standalone" : "Aberto no navegador"} tone={isStandalone ? "good" : "muted"} />
+            <StatusLine label="Instalação" value={installAvailable ? "Disponível neste navegador" : "Use o menu do navegador se o botão não aparecer"} tone={installAvailable ? "good" : "muted"} />
+            <StatusLine label="Service worker" value={serviceWorkerReady ? "Ativo" : "Será ativado no build de produção"} tone={serviceWorkerReady ? "good" : "warning"} />
+          </div>
+          <button className="primary-button" type="button" onClick={onInstall}>
+            <Download size={16} />
+            <span>Instalar app</span>
+          </button>
+        </article>
+
+        <article className="settings-card">
+          <div className="settings-card-title">
+            <Bell size={21} />
+            <div>
+              <h3>Notificações locais</h3>
+              <p>{notificationCopy.description}</p>
+            </div>
+          </div>
+          <div className="settings-status-list">
+            <StatusLine label="Status" value={notificationCopy.label} tone={notificationCopy.tone} />
+            <StatusLine label="Base local" value={serviceWorkerReady ? "Pronta para teste" : "Disponível após instalar/build de produção"} tone={serviceWorkerReady ? "good" : "warning"} />
+          </div>
+          <div className="button-row">
+            <button className="primary-button" type="button" onClick={onRequestNotifications}>
+              <ShieldCheck size={16} />
+              <span>Ativar notificações</span>
+            </button>
+            <button className="secondary-button" type="button" onClick={onSendTestNotification}>
+              <Send size={16} />
+              <span>Enviar teste</span>
+            </button>
+          </div>
+          <p className="settings-note">
+            As notificações locais funcionam melhor com o app instalado. Para alertas garantidos mesmo com o app fechado,
+            será necessário ativar notificações push em uma próxima etapa.
+          </p>
+        </article>
+      </div>
+
+      <article className="settings-card alert-settings-card">
+        <div className="settings-card-title">
+          <Clock3 size={21} />
+          <div>
+            <h3>Alertas internos</h3>
+            <p>Itens que a base de notificações já consegue identificar dentro do app.</p>
+          </div>
+        </div>
+
+        {notificationAlerts.length === 0 ? (
+          <p className="empty-state">Nenhum alerta importante encontrado agora.</p>
+        ) : (
+          <div className="notification-alert-list">
+            {notificationAlerts.map((alert) => (
+              <article className={`notification-alert ${alert.tone}`} key={`${alert.event.kind}-${alert.event.id}-${alert.label}`}>
+                <div className="alert-icon">{eventIcon(alert.event.kind, 16)}</div>
+                <div>
+                  <strong>{alert.event.title}</strong>
+                  <p>
+                    {alert.event.projectName} · {capitalize(alert.event.kind)} · {formatShortDate(alert.event.date)}
+                  </p>
+                  <div className="meta-line">
+                    <span className="meta-chip">{alert.label}</span>
+                    <StatusBadge value={alert.event.status} compact />
+                    {alert.event.priority && <span className="meta-chip">{alert.event.priority}</span>}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+
+        <p className="settings-note">
+          TODO push real: salvar subscriptions no backend, agendar disparos com Supabase Cron, Vercel Cron ou outro serviço,
+          e enviar notificações quando o app estiver fechado.
+        </p>
+      </article>
+    </section>
+  );
+}
+
+function StatusLine({ label, value, tone }: { label: string; value: string; tone: "good" | "warning" | "danger" | "muted" }) {
+  return (
+    <div className={`status-line ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
@@ -3064,6 +3336,34 @@ function buildTodayFocusEvents(events: CalendarEvent[]) {
     .slice(0, 6);
 }
 
+function buildNotificationAlerts(events: CalendarEvent[]): NotificationAlert[] {
+  return events
+    .filter((event) => !isEventDone(event))
+    .map((event) => {
+      const days = diffInDays(event.date);
+      const priorityWeight = event.priority === "crítica" ? 1 : event.priority === "alta" ? 2 : 9;
+      if (event.status === "atrasado" || days < 0) {
+        return { event, label: "Atrasado", tone: "danger" as const, weight: 0 };
+      }
+      if (event.priority === "crítica" || event.priority === "alta") {
+        return { event, label: event.priority === "crítica" ? "Prioridade crítica" : "Prioridade alta", tone: "warning" as const, weight: priorityWeight };
+      }
+      if (event.date === todayKey() || isAlwaysVisible(event)) {
+        return { event, label: "Hoje", tone: "info" as const, weight: 3 };
+      }
+      if (days === 1) {
+        return { event, label: "Amanhã", tone: "info" as const, weight: 4 };
+      }
+      if (days > 1 && days <= 7) {
+        return { event, label: "Vence em até 7 dias", tone: "info" as const, weight: 5 };
+      }
+      return null;
+    })
+    .filter((alert): alert is NotificationAlert => Boolean(alert))
+    .sort((a, b) => a.weight - b.weight || a.event.date.localeCompare(b.event.date) || a.event.title.localeCompare(b.event.title))
+    .slice(0, 12);
+}
+
 function focusScore(event: CalendarEvent) {
   if (event.status === "atrasado") return 0;
   if (event.priority === "crítica") return 1;
@@ -3130,6 +3430,74 @@ function isEventDone(event: CalendarEvent) {
 function isAlwaysVisible(event: CalendarEvent) {
   return event.status === "permanente" && !event.recurrenceStopped;
 }
+
+function getNotificationPermissionView(): NotificationPermissionView {
+  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+  return permissionToView(Notification.permission);
+}
+
+function permissionToView(permission: NotificationPermission): NotificationPermissionView {
+  if (permission === "granted") return "granted";
+  if (permission === "denied") return "denied";
+  return "not-configured";
+}
+
+function notificationStatusCopy(permission: NotificationPermissionView) {
+  if (permission === "granted") {
+    return {
+      label: "Notificações ativadas",
+      description: "Permissão concedida para notificações locais e testes deste dispositivo.",
+      tone: "good" as const,
+    };
+  }
+  if (permission === "denied") {
+    return {
+      label: "Notificações bloqueadas",
+      description: "O navegador bloqueou notificações. Libere nas configurações do site para usar os testes.",
+      tone: "danger" as const,
+    };
+  }
+  if (permission === "unsupported") {
+    return {
+      label: "Não suportado",
+      description: "Este navegador não oferece suporte à Notification API.",
+      tone: "warning" as const,
+    };
+  }
+  return {
+    label: "Não configuradas",
+    description: "Clique para pedir permissão somente quando quiser ativar os alertas locais.",
+    tone: "muted" as const,
+  };
+}
+
+function isStandaloneDisplay() {
+  if (typeof window === "undefined") return false;
+  const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
+  return window.matchMedia("(display-mode: standalone)").matches || standaloneNavigator.standalone === true;
+}
+
+async function sendLocalNotification(title: string, body: string) {
+  const options: NotificationOptions = {
+    body,
+    icon: "/icon-192.png",
+    tag: "mente-nova-local-test",
+    data: { url: "/" },
+  };
+
+  if ("serviceWorker" in navigator) {
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (registration?.showNotification) {
+      await registration.showNotification(title, options);
+      return;
+    }
+  }
+
+  new Notification(title, options);
+}
+
+// TODO(push): persistir PushSubscription em backend somente quando essa fase for autorizada.
+// TODO(push): usar Supabase Cron, Vercel Cron ou outro agendador para disparos confiáveis com o app fechado.
 
 function shouldCreateNext(recurrence: Recurrence, recurrenceStopped: boolean) {
   return !recurrenceStopped && !["único", "permanente", "nunca mais"].includes(recurrence);

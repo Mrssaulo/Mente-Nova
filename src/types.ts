@@ -109,7 +109,8 @@ export type AppView =
   | "manutenção"
   | "renovações"
   | "financeiro"
-  | "tarefas";
+  | "tarefas"
+  | "configurações";
 
 export interface Project {
   id: string;
