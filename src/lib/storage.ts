@@ -7,10 +7,10 @@ import type {
   Project,
   Reminder,
 } from "../types";
-import { addDays, addMonths, todayKey } from "./dates";
+import { addDays, todayKey } from "./dates";
 
 const storageKey = "painel-manutencao-projetos:v1";
-const currentSchemaVersion = 2;
+const currentSchemaVersion = 3;
 
 function id(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -19,231 +19,54 @@ function id(prefix: string) {
 export function seedData(): AppData {
   const today = todayKey();
   const now = new Date().toISOString();
-  const portfolioId = id("project");
-  const billingId = id("project");
-  const domainId = id("project");
 
   return {
     schemaVersion: currentSchemaVersion,
-    projects: [
-      {
-        id: portfolioId,
-        name: "Site institucional",
-        siteUrl: "https://example.com",
-        description: "Projeto público principal com domínio, deploy, posts e formulários.",
-        platform: "Vercel",
-        status: "ativo",
-        notes: "Acompanhar deploy, domínio, integrações críticas e calendário de conteúdo.",
-        adminUrl: "https://vercel.com",
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: billingId,
-        name: "Sistema de assinaturas",
-        siteUrl: "",
-        description: "Pagamentos, webhooks e fluxo de cobrança recorrente.",
-        platform: "Stripe",
-        status: "atenção",
-        notes: "Revisar chaves, webhooks e testes de pagamento sempre que houver alteração de plano.",
-        adminUrl: "https://dashboard.stripe.com",
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: domainId,
-        name: "Domínio principal",
-        siteUrl: "",
-        description: "Registro, DNS e renovação do domínio principal.",
-        platform: "Registro.br",
-        status: "vencendo",
-        notes: "Renovação anual importante para evitar indisponibilidade.",
-        adminUrl: "https://registro.br",
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
-    reminders: [
-      {
-        id: id("reminder"),
-        title: "Renovar domínio",
-        projectId: domainId,
-        dueDate: addDays(today, 15),
-        type: "renovação",
-        recurrence: "anual",
-        priority: "crítica",
-        status: "pendente",
-        notes: "Confirmar renovação antes da janela crítica.",
-        originUrl: "https://registro.br",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: id("reminder"),
-        title: "Entrega de revisão mensal",
-        projectId: portfolioId,
-        dueDate: addDays(today, 10),
-        type: "entrega",
-        recurrence: "mensal",
-        priority: "média",
-        status: "pendente",
-        notes: "Revisar evolução do projeto e próximos ajustes.",
-        originUrl: "",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
-    contentItems: [
-      {
-        id: id("content"),
-        title: "Post de bastidores do projeto",
-        projectId: portfolioId,
-        platform: "Instagram",
-        type: "carrossel",
-        status: "ideia",
-        postDate: today,
-        priority: "alta",
-        caption: "Mostrar uma melhoria recente e convidar o público para testar.",
-        assetUrl: "",
-        notes: "Transformar em roteiro curto antes de produzir a arte.",
-        recurrence: "semanal",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: id("content"),
-        title: "Vídeo explicando cobrança recorrente",
-        projectId: billingId,
-        platform: "YouTube",
-        type: "vídeo",
-        status: "roteiro",
-        postDate: addDays(today, 5),
-        priority: "média",
-        caption: "",
-        assetUrl: "",
-        notes: "Focar em clareza e segurança para novos usuários.",
-        recurrence: "único",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
-    maintenanceItems: [
-      {
-        id: id("maintenance"),
-        title: "Verificar deploy e domínio",
-        projectId: portfolioId,
-        kind: "Conferir deploy",
-        date: today,
-        recurrence: "semanal",
-        priority: "alta",
-        status: "pendente",
-        notes: "Checar SSL, DNS, formulário e última publicação.",
-        originUrl: "https://vercel.com",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: id("maintenance"),
-        title: "Backup de banco",
-        projectId: portfolioId,
-        kind: "Fazer backup",
-        date: addDays(today, 7),
-        recurrence: "mensal",
-        priority: "média",
-        status: "pendente",
-        notes: "Baixar dump e validar arquivo.",
-        originUrl: "",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
-    financeItems: [
-      {
-        id: id("finance"),
-        name: "Hospedagem Vercel",
-        projectId: portfolioId,
-        amountBrl: 0,
-        amountUsd: 20,
-        dueDate: addDays(today, 7),
-        recurrence: "mensal",
-        status: "pendente",
-        originUrl: "https://vercel.com/account/billing",
-        notes: "Plano mensal do projeto.",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: id("finance"),
-        name: "Domínio .com.br",
-        projectId: domainId,
-        amountBrl: 40,
-        amountUsd: 0,
-        dueDate: addDays(today, 15),
-        recurrence: "anual",
-        status: "pendente",
-        originUrl: "https://registro.br",
-        notes: "Renovação anual.",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: id("finance"),
-        name: "Ferramenta de testes",
-        projectId: billingId,
-        amountBrl: 79,
-        amountUsd: 0,
-        dueDate: addMonths(today, -1),
-        recurrence: "mensal",
-        status: "pago",
-        originUrl: "",
-        notes: "Pagamento já registrado para compor o histórico.",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-        paidAt: now,
-      },
-    ],
-    generalTasks: [
-      {
-        id: id("task"),
-        title: "Revisar ideias de melhorias",
-        projectId: portfolioId,
-        category: "estratégia",
-        date: addDays(today, 2),
-        priority: "média",
-        status: "pendente",
-        recurrence: "semanal",
-        originUrl: "",
-        notes: "Separar ideias que viram tarefa técnica, conteúdo ou melhoria de produto.",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: id("task"),
-        title: "Organizar próximos experimentos",
-        projectId: billingId,
-        category: "operação",
-        date: addDays(today, 4),
-        priority: "alta",
-        status: "em andamento",
-        recurrence: "único",
-        originUrl: "",
-        notes: "",
-        recurrenceStopped: false,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
+    projects: [],
+    reminders: [],
+    contentItems: createDefaultContentSchedule(today, now),
+    maintenanceItems: [],
+    financeItems: [],
+    generalTasks: [],
   };
+}
+
+function createDefaultContentSchedule(today: string, now: string): ContentItem[] {
+  const schedule = [
+    { title: "Post de segunda-feira", weekday: 1, type: "post comum" },
+    { title: "Story de terça-feira", weekday: 2, type: "story" },
+    { title: "Post de quarta-feira", weekday: 3, type: "post comum" },
+    { title: "Story de quinta-feira", weekday: 4, type: "story" },
+    { title: "Post de sexta-feira", weekday: 5, type: "post comum" },
+  ] as const;
+
+  return schedule.map((item) => ({
+    id: id("content"),
+    title: item.title,
+    projectId: "",
+    platform: "Instagram",
+    type: item.type,
+    status: "agendado",
+    postDate: nextDateForWeekday(today, item.weekday),
+    priority: "média",
+    caption: "",
+    assetUrl: "",
+    notes: "",
+    recurrence: "semanal",
+    recurrenceStopped: false,
+    createdAt: now,
+    updatedAt: now,
+  }));
+}
+
+function nextDateForWeekday(dateKey: string, weekday: number) {
+  const day = dayOfWeek(dateKey);
+  return addDays(dateKey, (weekday - day + 7) % 7);
+}
+
+function dayOfWeek(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day).getDay();
 }
 
 export function loadData(): AppData {
@@ -270,8 +93,12 @@ export function saveData(data: AppData) {
 
 function migrateData(parsed: Partial<AppData>): AppData {
   const now = new Date().toISOString();
+  let projects = (parsed.projects ?? []).map((project) => normalizeProject(project, now));
   let reminders = (parsed.reminders ?? []).map((reminder) => normalizeReminder(reminder, now));
+  let contentItems = (parsed.contentItems ?? []).map((item) => normalizeContent(item, now));
   let maintenanceItems = (parsed.maintenanceItems ?? []).map((item) => normalizeMaintenance(item, now));
+  let financeItems = (parsed.financeItems ?? []).map((item) => normalizeFinance(item, now));
+  let generalTasks = (parsed.generalTasks ?? []).map((task) => normalizeTask(task, now));
   const schemaVersion = parsed.schemaVersion ?? 1;
 
   if (schemaVersion < 2) {
@@ -290,14 +117,25 @@ function migrateData(parsed: Partial<AppData>): AppData {
     reminders = reminders.filter((reminder) => !isTechnicalReminder(reminder));
   }
 
+  if (schemaVersion < 3) {
+    projects = projects.filter((project) => !isDemoProject(project));
+    reminders = reminders.filter((reminder) => !isDemoReminder(reminder));
+    contentItems = contentItems.filter((item) => !isDemoContent(item));
+    maintenanceItems = maintenanceItems.filter((item) => !isDemoMaintenance(item));
+    financeItems = financeItems.filter((item) => !isDemoFinance(item));
+    generalTasks = generalTasks.filter((task) => !isDemoTask(task));
+
+    contentItems = addMissingDefaultContentSchedule(contentItems, now);
+  }
+
   return {
     schemaVersion: currentSchemaVersion,
-    projects: (parsed.projects ?? []).map((project) => normalizeProject(project, now)),
+    projects,
     reminders,
-    contentItems: (parsed.contentItems ?? []).map((item) => normalizeContent(item, now)),
+    contentItems,
     maintenanceItems,
-    financeItems: (parsed.financeItems ?? []).map((item) => normalizeFinance(item, now)),
-    generalTasks: (parsed.generalTasks ?? []).map((task) => normalizeTask(task, now)),
+    financeItems,
+    generalTasks,
   };
 }
 
@@ -416,6 +254,51 @@ function normalizeTask(task: GeneralTask, now: string): GeneralTask {
     updatedAt: task.updatedAt ?? now,
     completedAt: task.completedAt,
   };
+}
+
+const defaultContentTitles = new Set([
+  "Post de segunda-feira",
+  "Story de terça-feira",
+  "Post de quarta-feira",
+  "Story de quinta-feira",
+  "Post de sexta-feira",
+]);
+
+const demoProjectNames = new Set(["Site institucional", "Sistema de assinaturas", "Domínio principal"]);
+const demoReminderTitles = new Set(["Renovar domínio", "Entrega de revisão mensal"]);
+const demoContentTitles = new Set(["Post de bastidores do projeto", "Vídeo explicando cobrança recorrente"]);
+const demoMaintenanceTitles = new Set(["Verificar deploy e domínio", "Backup de banco"]);
+const demoFinanceNames = new Set(["Hospedagem Vercel", "Domínio .com.br", "Ferramenta de testes"]);
+const demoTaskTitles = new Set(["Revisar ideias de melhorias", "Organizar próximos experimentos"]);
+
+function addMissingDefaultContentSchedule(items: ContentItem[], now: string) {
+  const existingTitles = new Set(items.map((item) => item.title));
+  const missingItems = createDefaultContentSchedule(todayKey(), now).filter((item) => !existingTitles.has(item.title));
+  return [...items, ...missingItems];
+}
+
+function isDemoProject(project: Project) {
+  return demoProjectNames.has(project.name) || project.siteUrl === "https://example.com";
+}
+
+function isDemoReminder(reminder: Reminder) {
+  return demoReminderTitles.has(reminder.title);
+}
+
+function isDemoContent(item: ContentItem) {
+  return demoContentTitles.has(item.title) && !defaultContentTitles.has(item.title);
+}
+
+function isDemoMaintenance(item: MaintenanceItem) {
+  return demoMaintenanceTitles.has(item.title);
+}
+
+function isDemoFinance(item: FinanceItem) {
+  return demoFinanceNames.has(item.name);
+}
+
+function isDemoTask(task: GeneralTask) {
+  return demoTaskTitles.has(task.title);
 }
 
 function isTechnicalReminder(reminder: Reminder) {
